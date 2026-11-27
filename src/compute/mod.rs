@@ -73,19 +73,15 @@ pub fn compute_root_layout(tree: &mut impl LayoutPartialTree, root: NodeId, avai
             let box_sizing_adjustment =
                 if style.box_sizing() == BoxSizing::ContentBox { padding_border_size } else { Size::ZERO };
 
-            let min_size = style
-                .min_size()
-                .maybe_resolve(parent_size)
-                .maybe_apply_aspect_ratio(aspect_ratio)
-                .maybe_add(box_sizing_adjustment);
-            let max_size = style
-                .max_size()
-                .maybe_resolve(parent_size)
-                .maybe_apply_aspect_ratio(aspect_ratio)
-                .maybe_add(box_sizing_adjustment);
-            let clamped_style_size = style
-                .size()
-                .maybe_resolve(parent_size)
+            let preferred_size = style.size().maybe_resolve(parent_size);
+            let (min_size, max_size) = preferred_size.transfer_aspect_ratio_constraints(
+                style.min_size().maybe_resolve(parent_size),
+                style.max_size().maybe_resolve(parent_size),
+                aspect_ratio,
+            );
+            let min_size = min_size.maybe_add(box_sizing_adjustment);
+            let max_size = max_size.maybe_add(box_sizing_adjustment);
+            let clamped_style_size = preferred_size
                 .maybe_apply_aspect_ratio(aspect_ratio)
                 .maybe_add(box_sizing_adjustment)
                 .maybe_clamp(min_size, max_size);

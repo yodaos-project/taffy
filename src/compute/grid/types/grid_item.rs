@@ -252,16 +252,14 @@ impl GridItem {
             .maybe_resolve(grid_area_size)
             .maybe_apply_aspect_ratio(aspect_ratio)
             .maybe_add(box_sizing_adjustment);
-        let min_size = self
-            .min_size
-            .maybe_resolve(grid_area_size)
-            .maybe_apply_aspect_ratio(aspect_ratio)
-            .maybe_add(box_sizing_adjustment);
-        let max_size = self
-            .max_size
-            .maybe_resolve(grid_area_size)
-            .maybe_apply_aspect_ratio(aspect_ratio)
-            .maybe_add(box_sizing_adjustment);
+        let preferred_size = self.size.maybe_resolve(grid_area_size);
+        let (min_size, max_size) = preferred_size.transfer_aspect_ratio_constraints(
+            self.min_size.maybe_resolve(grid_area_size),
+            self.max_size.maybe_resolve(grid_area_size),
+            aspect_ratio,
+        );
+        let min_size = min_size.maybe_add(box_sizing_adjustment);
+        let max_size = max_size.maybe_add(box_sizing_adjustment);
 
         let grid_area_minus_item_margins_size = grid_area_size.maybe_sub(margins);
 

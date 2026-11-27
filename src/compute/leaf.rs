@@ -42,20 +42,25 @@ where
         }
         SizingMode::InherentSize => {
             let aspect_ratio = style.aspect_ratio();
-            let style_size = style
-                .size()
-                .maybe_resolve(parent_size)
-                .maybe_apply_aspect_ratio(aspect_ratio)
-                .maybe_add(box_sizing_adjustment);
-            let style_min_size = style
-                .min_size()
-                .maybe_resolve(parent_size)
-                .maybe_apply_aspect_ratio(aspect_ratio)
-                .maybe_add(box_sizing_adjustment);
-            let style_max_size = style.max_size().maybe_resolve(parent_size).maybe_add(box_sizing_adjustment);
+            let preferred_size = style.size().maybe_resolve(parent_size);
+            let style_size = preferred_size.maybe_apply_aspect_ratio(aspect_ratio).maybe_add(box_sizing_adjustment);
+            // An automatic height can grow to fit content measured at the constrained width.
+            let style_max_size = style.max_size().maybe_resolve(parent_size);
+            let (style_min_size, _) = preferred_size.transfer_aspect_ratio_constraints(
+                style.min_size().maybe_resolve(parent_size),
+                style_max_size,
+                aspect_ratio,
+            );
 
             let node_size = known_dimensions.or(style_size);
-            (node_size, style_min_size, style_max_size, aspect_ratio)
+            // A height determined by layout or an explicit size must survive clamping.
+            let measured_aspect_ratio = aspect_ratio.filter(|_| node_size.height.is_none());
+            (
+                node_size,
+                style_min_size.maybe_add(box_sizing_adjustment),
+                style_max_size.maybe_add(box_sizing_adjustment),
+                measured_aspect_ratio,
+            )
         }
     };
 
@@ -144,10 +149,12 @@ where
         .or(node_size)
         .unwrap_or(measured_size + content_box_inset.sum_axes())
         .maybe_clamp(node_min_size, node_max_size);
-    let size = Size {
-        width: clamped_size.width,
-        height: f32_max(clamped_size.height, aspect_ratio.map(|ratio| clamped_size.width / ratio).unwrap_or(0.0)),
-    };
+    let height = aspect_ratio.map_or(clamped_size.height, |ratio| {
+        let ratio_height =
+            f32_max(clamped_size.width - box_sizing_adjustment.width, 0.0) / ratio + box_sizing_adjustment.height;
+        f32_max(clamped_size.height, ratio_height).maybe_clamp(node_min_size.height, node_max_size.height)
+    });
+    let size = Size { width: clamped_size.width, height };
     let size = size.maybe_max(padding_border.sum_axes().map(Some));
 
     LayoutOutput {
