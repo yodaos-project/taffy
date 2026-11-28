@@ -60,7 +60,7 @@
 // document the feature flags for the crate by extracting the comments from Cargo.toml
 #![cfg_attr(feature = "document-features", doc = document_features::document_features!())]
 // annotate items with their required features (gated by docsrs flag as this requires the nightly toolchain)
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![cfg_attr(not(feature = "std"), no_std)]
 #![deny(unsafe_code)]
 #![forbid(unsafe_code)]
@@ -108,11 +108,20 @@ pub use crate::compute::{
 };
 #[doc(inline)]
 pub use crate::style::Style;
+#[cfg(feature = "block_layout")]
 #[doc(inline)]
-pub use crate::tree::traits::*;
+pub use crate::tree::LayoutBlockContainer;
+#[cfg(feature = "flexbox")]
+#[doc(inline)]
+pub use crate::tree::LayoutFlexboxContainer;
+#[cfg(feature = "grid")]
+#[doc(inline)]
+pub use crate::tree::LayoutGridContainer;
 #[cfg(feature = "taffy_tree")]
 #[doc(inline)]
 pub use crate::tree::TaffyTree;
+#[doc(inline)]
+pub use crate::tree::{LayoutPartialTree, PrintTree, RoundTree, TraversePartialTree, TraverseTree};
 #[cfg(feature = "std")]
 #[doc(inline)]
 pub use crate::util::print_tree;

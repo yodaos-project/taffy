@@ -110,7 +110,7 @@ async fn main() {
     let test_descs: Vec<_> = test_descs
         .iter()
         .map(|(name, fixture_path, description)| {
-            debug!("generating test contents for {}", &name);
+            debug!("generating test contents for {}", name);
 
             let border_box_test = generate_test(format!("{name}__border_box"), &description["borderBoxData"]);
             let content_box_test = generate_test(format!("{name}__content_box"), &description["contentBoxData"]);
@@ -153,7 +153,7 @@ async fn main() {
         writeln!(&mut mod_file, "{}", token).unwrap();
         let mut test_filename = test_path.join(&name);
         test_filename.set_extension("rs");
-        debug!("writing {} to disk...", &name);
+        debug!("writing {} to disk...", name);
         fs::write(test_filename, test_body).unwrap();
     }
 
