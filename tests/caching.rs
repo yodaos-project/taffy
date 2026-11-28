@@ -54,4 +54,34 @@ mod caching {
         taffy.compute_layout_with_measure(node, Size::MAX_CONTENT, count_measure_function).unwrap();
         assert_eq!(taffy.get_node_context_mut(leaf).unwrap().count, 4);
     }
+
+    #[test]
+    #[cfg(feature = "block_layout")]
+    fn block_relayout_updates_percent_max_height_when_parent_height_changes() {
+        let mut taffy = TaffyTree::<()>::new();
+        let leaf = taffy
+            .new_leaf(Style {
+                display: Display::Block,
+                max_size: Size { width: auto(), height: percent(0.5) },
+                ..Default::default()
+            })
+            .unwrap();
+        let parent_style = |height| Style {
+            display: Display::Block,
+            size: Size { width: length(100.0), height },
+            ..Default::default()
+        };
+        let parent = taffy.new_with_children(parent_style(length(100.0)), &[leaf]).unwrap();
+
+        for (height, expected) in [(length(100.0), 50.0), (length(200.0), 80.0), (length(60.0), 30.0), (auto(), 80.0)] {
+            taffy.set_style(parent, parent_style(height)).unwrap();
+            taffy
+                .compute_layout_with_measure(parent, Size::MAX_CONTENT, |_, _, _, _, _| Size {
+                    width: 80.0,
+                    height: 80.0,
+                })
+                .unwrap();
+            assert_eq!(taffy.layout(leaf).unwrap().size.height, expected, "parent height {height:?}");
+        }
+    }
 }

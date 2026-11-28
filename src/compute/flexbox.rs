@@ -177,20 +177,16 @@ pub fn compute_flexbox_layout(
     let box_sizing_adjustment =
         if style.box_sizing() == BoxSizing::ContentBox { padding_border_sum } else { Size::ZERO };
 
-    let min_size = style
-        .min_size()
-        .maybe_resolve(parent_size)
-        .maybe_apply_aspect_ratio(aspect_ratio)
-        .maybe_add(box_sizing_adjustment);
-    let max_size = style
-        .max_size()
-        .maybe_resolve(parent_size)
-        .maybe_apply_aspect_ratio(aspect_ratio)
-        .maybe_add(box_sizing_adjustment);
+    let preferred_size = style.size().maybe_resolve(parent_size);
+    let (min_size, max_size) = preferred_size.transfer_aspect_ratio_constraints(
+        style.min_size().maybe_resolve(parent_size),
+        style.max_size().maybe_resolve(parent_size),
+        aspect_ratio,
+    );
+    let min_size = min_size.maybe_add(box_sizing_adjustment);
+    let max_size = max_size.maybe_add(box_sizing_adjustment);
     let clamped_style_size = if inputs.sizing_mode == SizingMode::InherentSize {
-        style
-            .size()
-            .maybe_resolve(parent_size)
+        preferred_size
             .maybe_apply_aspect_ratio(aspect_ratio)
             .maybe_add(box_sizing_adjustment)
             .maybe_clamp(min_size, max_size)
@@ -452,22 +448,21 @@ fn compute_constants(
     let container_size = Size::zero();
     let inner_container_size = Size::zero();
 
+    let preferred_size = style.size().maybe_resolve(parent_size);
+    let (min_size, max_size) = preferred_size.transfer_aspect_ratio_constraints(
+        style.min_size().maybe_resolve(parent_size),
+        style.max_size().maybe_resolve(parent_size),
+        aspect_ratio,
+    );
+
     AlgoConstants {
         dir,
         is_row,
         is_column,
         is_wrap,
         is_wrap_reverse,
-        min_size: style
-            .min_size()
-            .maybe_resolve(parent_size)
-            .maybe_apply_aspect_ratio(aspect_ratio)
-            .maybe_add(box_sizing_adjustment),
-        max_size: style
-            .max_size()
-            .maybe_resolve(parent_size)
-            .maybe_apply_aspect_ratio(aspect_ratio)
-            .maybe_add(box_sizing_adjustment),
+        min_size: min_size.maybe_add(box_sizing_adjustment),
+        max_size: max_size.maybe_add(box_sizing_adjustment),
         margin,
         border,
         gap,
@@ -506,24 +501,18 @@ fn generate_anonymous_flex_items(
             let pb_sum = (padding + border).sum_axes();
             let box_sizing_adjustment =
                 if child_style.box_sizing() == BoxSizing::ContentBox { pb_sum } else { Size::ZERO };
+            let preferred_size = child_style.size().maybe_resolve(constants.node_inner_size);
+            let (min_size, max_size) = preferred_size.transfer_aspect_ratio_constraints(
+                child_style.min_size().maybe_resolve(constants.node_inner_size),
+                child_style.max_size().maybe_resolve(constants.node_inner_size),
+                aspect_ratio,
+            );
             FlexItem {
                 node: child,
                 order: index as u32,
-                size: child_style
-                    .size()
-                    .maybe_resolve(constants.node_inner_size)
-                    .maybe_apply_aspect_ratio(aspect_ratio)
-                    .maybe_add(box_sizing_adjustment),
-                min_size: child_style
-                    .min_size()
-                    .maybe_resolve(constants.node_inner_size)
-                    .maybe_apply_aspect_ratio(aspect_ratio)
-                    .maybe_add(box_sizing_adjustment),
-                max_size: child_style
-                    .max_size()
-                    .maybe_resolve(constants.node_inner_size)
-                    .maybe_apply_aspect_ratio(aspect_ratio)
-                    .maybe_add(box_sizing_adjustment),
+                size: preferred_size.maybe_apply_aspect_ratio(aspect_ratio).maybe_add(box_sizing_adjustment),
+                min_size: min_size.maybe_add(box_sizing_adjustment),
+                max_size: max_size.maybe_add(box_sizing_adjustment),
 
                 inset: child_style.inset().zip_size(constants.node_inner_size, |p, s| p.maybe_resolve(s)),
                 margin: child_style.margin().resolve_or_zero(constants.node_inner_size.width),
@@ -610,16 +599,16 @@ fn determine_available_space(
 ///     then the flex base size is calculated from its inner cross size and the flex item’s intrinsic aspect ratio.
 ///
 ///     - C. If the used flex basis is content or depends on its available space, and the flex container is being sized under a min-content
-///         or max-content constraint (e.g. when performing automatic table layout \[CSS21\]), size the item under that constraint.
-///         The flex base size is the item’s resulting main size.
+///       or max-content constraint (e.g. when performing automatic table layout \[CSS21\]), size the item under that constraint.
+///       The flex base size is the item’s resulting main size.
 ///
 ///     - E. Otherwise, size the item into the available space using its used flex basis in place of its main size, treating a value of content as max-content.
-///         If a cross size is needed to determine the main size (e.g. when the flex item’s main size is in its block axis) and the flex item’s cross size is auto and not definite,
-///         in this calculation use fit-content as the flex item’s cross size. The flex base size is the item’s resulting main size.
+///       If a cross size is needed to determine the main size (e.g. when the flex item’s main size is in its block axis) and the flex item’s cross size is auto and not definite,
+///       in this calculation use fit-content as the flex item’s cross size. The flex base size is the item’s resulting main size.
 ///
 ///     When determining the flex base size, the item’s min and max main sizes are ignored (no clamping occurs).
-///     Furthermore, the sizing calculations that floor the content box size at zero when applying box-sizing are also ignored.
-///     (For example, an item with a specified size of zero, positive padding, and box-sizing: border-box will have an outer flex base size of zero—and hence a negative inner flex base size.)
+///   Furthermore, the sizing calculations that floor the content box size at zero when applying box-sizing are also ignored.
+///   (For example, an item with a specified size of zero, positive padding, and box-sizing: border-box will have an outer flex base size of zero—and hence a negative inner flex base size.)
 #[inline]
 fn determine_flex_base_size(
     tree: &mut impl LayoutFlexboxContainer,
@@ -814,8 +803,8 @@ fn determine_flex_base_size(
 ///     - If the flex container is single-line, collect all the flex items into a single flex line.
 ///
 ///     - Otherwise, starting from the first uncollected item, collect consecutive items one by one until the first time that the next collected item would not fit into the flex container’s inner main size
-///         (or until a forced break is encountered, see [§10 Fragmenting Flex Layout](https://www.w3.org/TR/css-flexbox-1/#pagination)).
-///         If the very first uncollected item wouldn't fit, collect just it into the line.
+///       (or until a forced break is encountered, see [§10 Fragmenting Flex Layout](https://www.w3.org/TR/css-flexbox-1/#pagination)).
+///       If the very first uncollected item wouldn't fit, collect just it into the line.
 ///
 ///         For this step, the size of a flex item is its outer hypothetical main size. (**Note: This can be negative**.)
 ///
@@ -1335,7 +1324,7 @@ fn resolve_flexible_lengths(line: &mut FlexLine, constants: &AlgoConstants) {
 /// # [9.4. Cross Size Determination](https://www.w3.org/TR/css-flexbox-1/#cross-sizing)
 ///
 /// - [**Determine the hypothetical cross size of each item**](https://www.w3.org/TR/css-flexbox-1/#algo-cross-item)
-///     by performing layout with the used main size and the available space, treating auto as fit-content.
+///   by performing layout with the used main size and the available space, treating auto as fit-content.
 #[inline]
 fn determine_hypothetical_cross_size(
     tree: &mut impl LayoutFlexboxContainer,
@@ -1524,8 +1513,8 @@ fn calculate_cross_size(flex_lines: &mut [FlexLine], node_size: Size<Option<f32>
 /// # [9.4. Cross Size Determination](https://www.w3.org/TR/css-flexbox-1/#cross-sizing)
 ///
 /// - [**Handle 'align-content: stretch'**](https://www.w3.org/TR/css-flexbox-1/#algo-line-stretch). If the flex container has a definite cross size, align-content is stretch,
-///     and the sum of the flex lines' cross sizes is less than the flex container’s inner cross size,
-///     increase the cross size of each flex line by equal amounts such that the sum of their cross sizes exactly equals the flex container’s inner cross size.
+///   and the sum of the flex lines' cross sizes is less than the flex container’s inner cross size,
+///   increase the cross size of each flex line by equal amounts such that the sum of their cross sizes exactly equals the flex container’s inner cross size.
 #[inline]
 fn handle_align_content_stretch(flex_lines: &mut [FlexLine], node_size: Size<Option<f32>>, constants: &AlgoConstants) {
     if constants.align_content == AlignContent::Stretch {
@@ -1556,8 +1545,8 @@ fn handle_align_content_stretch(flex_lines: &mut [FlexLine], node_size: Size<Opt
 /// # [9.4. Cross Size Determination](https://www.w3.org/TR/css-flexbox-1/#cross-sizing)
 ///
 /// - [**Determine the used cross size of each flex item**](https://www.w3.org/TR/css-flexbox-1/#algo-stretch). If a flex item has align-self: stretch, its computed cross size property is auto,
-///     and neither of its cross-axis margins are auto, the used outer cross size is the used cross size of its flex line, clamped according to the item’s used min and max cross sizes.
-///     Otherwise, the used cross size is the item’s hypothetical cross size.
+///   and neither of its cross-axis margins are auto, the used outer cross size is the used cross size of its flex line, clamped according to the item’s used min and max cross sizes.
+///   Otherwise, the used cross size is the item’s hypothetical cross size.
 ///
 ///     If the flex item has align-self: stretch, redo layout for its contents, treating this used size as its definite cross size so that percentage-sized children can be resolved.
 ///
@@ -1618,7 +1607,7 @@ fn determine_used_cross_size(
 /// - [**Distribute any remaining free space**](https://www.w3.org/TR/css-flexbox-1/#algo-main-align). For each flex line:
 ///
 ///     1. If the remaining free space is positive and at least one main-axis margin on this line is `auto`, distribute the free space equally among these margins.
-///         Otherwise, set all `auto` margins to zero.
+///        Otherwise, set all `auto` margins to zero.
 ///
 ///     2. Align the items along the main-axis per `justify-content`.
 #[inline]
@@ -1686,13 +1675,13 @@ fn distribute_remaining_free_space(flex_lines: &mut [FlexLine], constants: &Algo
 /// # [9.6. Cross-Axis Alignment](https://www.w3.org/TR/css-flexbox-1/#cross-alignment)
 ///
 /// - [**Resolve cross-axis `auto` margins**](https://www.w3.org/TR/css-flexbox-1/#algo-cross-margins).
-///     If a flex item has auto cross-axis margins:
+///   If a flex item has auto cross-axis margins:
 ///
 ///     - If its outer cross size (treating those auto margins as zero) is less than the cross size of its flex line,
-///         distribute the difference in those sizes equally to the auto margins.
+///       distribute the difference in those sizes equally to the auto margins.
 ///
 ///     - Otherwise, if the block-start or inline-start margin (whichever is in the cross axis) is auto, set it to zero.
-///         Set the opposite margin so that the outer cross size of the item equals the cross size of its flex line.
+///       Set the opposite margin so that the outer cross size of the item equals the cross size of its flex line.
 #[inline]
 fn resolve_cross_axis_auto_margins(flex_lines: &mut [FlexLine], constants: &AlgoConstants) {
     for line in flex_lines {
@@ -1735,7 +1724,7 @@ fn resolve_cross_axis_auto_margins(flex_lines: &mut [FlexLine], constants: &Algo
 /// # [9.6. Cross-Axis Alignment](https://www.w3.org/TR/css-flexbox-1/#cross-alignment)
 ///
 /// - [**Align all flex items along the cross-axis**](https://www.w3.org/TR/css-flexbox-1/#algo-cross-align) per `align-self`,
-///     if neither of the item's cross-axis margins are `auto`.
+///   if neither of the item's cross-axis margins are `auto`.
 #[inline]
 fn align_flex_items_along_cross_axis(
     child: &FlexItem,
@@ -2071,23 +2060,16 @@ fn perform_absolute_layout_on_absolute_children(
         let bottom = child_style.inset().bottom.maybe_resolve(inset_relative_size.height);
 
         // Compute known dimensions from min/max/inherent size styles
-        let style_size = child_style
-            .size()
-            .maybe_resolve(inset_relative_size)
-            .maybe_apply_aspect_ratio(aspect_ratio)
-            .maybe_add(box_sizing_adjustment);
-        let min_size = child_style
-            .min_size()
-            .maybe_resolve(inset_relative_size)
-            .maybe_apply_aspect_ratio(aspect_ratio)
-            .maybe_add(box_sizing_adjustment)
-            .or(padding_border_sum.map(Some))
-            .maybe_max(padding_border_sum);
-        let max_size = child_style
-            .max_size()
-            .maybe_resolve(inset_relative_size)
-            .maybe_apply_aspect_ratio(aspect_ratio)
-            .maybe_add(box_sizing_adjustment);
+        let preferred_size = child_style.size().maybe_resolve(inset_relative_size);
+        let (min_size, max_size) = preferred_size.transfer_aspect_ratio_constraints(
+            child_style.min_size().maybe_resolve(inset_relative_size),
+            child_style.max_size().maybe_resolve(inset_relative_size),
+            aspect_ratio,
+        );
+        let style_size = preferred_size.maybe_apply_aspect_ratio(aspect_ratio).maybe_add(box_sizing_adjustment);
+        let min_size =
+            min_size.maybe_add(box_sizing_adjustment).or(padding_border_sum.map(Some)).maybe_max(padding_border_sum);
+        let max_size = max_size.maybe_add(box_sizing_adjustment);
         let mut known_dimensions = style_size.maybe_clamp(min_size, max_size);
 
         drop(child_style);

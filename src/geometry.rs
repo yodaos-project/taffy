@@ -1,6 +1,7 @@
 //! Geometric primitives useful for layout
 
 use crate::util::sys::f32_max;
+use crate::util::MaybeMath;
 use crate::{style::Dimension, util::sys::f32_min};
 use core::ops::{Add, Sub};
 
@@ -585,6 +586,32 @@ impl Size<Option<f32>> {
             },
             None => self,
         }
+    }
+
+    /// Transfer constraints to an automatic axis while honoring specified sizes.
+    #[inline]
+    pub(crate) fn transfer_aspect_ratio_constraints(
+        self,
+        min_size: Self,
+        max_size: Self,
+        aspect_ratio: Option<f32>,
+    ) -> (Self, Self) {
+        let Some(ratio) = aspect_ratio else {
+            return (min_size, max_size);
+        };
+        // Only transferred minima and maxima are bounded by the preferred size.
+        // An explicit min/max continues to clamp the preferred size on its own axis.
+        let min_size = match (min_size.width, min_size.height) {
+            (Some(width), None) => Size::new(width, (width / ratio).maybe_min(self.height).maybe_min(max_size.height)),
+            (None, Some(height)) => Size::new((height * ratio).maybe_min(self.width).maybe_min(max_size.width), height),
+            _ => min_size,
+        };
+        let max_size = match (max_size.width, max_size.height) {
+            (Some(width), None) => Size::new(width, (width / ratio).maybe_max(self.height).maybe_max(min_size.height)),
+            (None, Some(height)) => Size::new((height * ratio).maybe_max(self.width).maybe_max(min_size.width), height),
+            _ => max_size,
+        };
+        (min_size, max_size)
     }
 }
 

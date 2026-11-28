@@ -128,10 +128,11 @@ pub trait GridItemStyle: CoreStyle {
 /// Defaults to [`GridAutoFlow::Row`]
 ///
 /// [MDN](https://developer.mozilla.org/en-US/docs/Web/CSS/grid-auto-flow)
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum GridAutoFlow {
     /// Items are placed by filling each row in turn, adding new rows as necessary
+    #[default]
     Row,
     /// Items are placed by filling each column in turn, adding new columns as necessary.
     Column,
@@ -139,12 +140,6 @@ pub enum GridAutoFlow {
     RowDense,
     /// Combines `Column` with the dense packing algorithm.
     ColumnDense,
-}
-
-impl Default for GridAutoFlow {
-    fn default() -> Self {
-        Self::Row
-    }
 }
 
 impl GridAutoFlow {
@@ -218,6 +213,8 @@ impl TaffyGridSpan for Line<GridPlacement> {
     }
 }
 
+// Only CSS grid coordinates have a public default placement.
+#[allow(clippy::derivable_impls)]
 impl Default for GridPlacement {
     fn default() -> Self {
         Self::Auto
@@ -631,6 +628,8 @@ pub enum GridTrackRepetition {
     /// The specified tracks should be repeated exacts N times
     Count(u16),
 }
+// Retain the existing TryFrom API for track repetition counts.
+#[allow(clippy::infallible_try_from)]
 impl TryFrom<u16> for GridTrackRepetition {
     type Error = Infallible;
     fn try_from(value: u16) -> Result<Self, Infallible> {
@@ -649,6 +648,8 @@ impl core::fmt::Display for InvalidStringRepetitionValue {
         f.write_str("&str can only be converted to GridTrackRepetition if it's value is 'auto-fit' or 'auto-fill'")
     }
 }
+// Retain the existing TryFrom API for auto-repeat keywords.
+#[allow(clippy::try_from_instead_of_from_str)]
 impl TryFrom<&str> for GridTrackRepetition {
     type Error = InvalidStringRepetitionValue;
     fn try_from(value: &str) -> Result<Self, InvalidStringRepetitionValue> {

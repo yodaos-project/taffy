@@ -85,23 +85,16 @@ pub(super) fn align_and_position_item(
     let box_sizing_adjustment =
         if style.box_sizing() == BoxSizing::ContentBox { padding_border_size } else { Size::ZERO };
 
-    let inherent_size = style
-        .size()
-        .maybe_resolve(grid_area_size)
-        .maybe_apply_aspect_ratio(aspect_ratio)
-        .maybe_add(box_sizing_adjustment);
-    let min_size = style
-        .min_size()
-        .maybe_resolve(grid_area_size)
-        .maybe_add(box_sizing_adjustment)
-        .or(padding_border_size.map(Some))
-        .maybe_max(padding_border_size)
-        .maybe_apply_aspect_ratio(aspect_ratio);
-    let max_size = style
-        .max_size()
-        .maybe_resolve(grid_area_size)
-        .maybe_apply_aspect_ratio(aspect_ratio)
-        .maybe_add(box_sizing_adjustment);
+    let preferred_size = style.size().maybe_resolve(grid_area_size);
+    let inherent_size = preferred_size.maybe_apply_aspect_ratio(aspect_ratio).maybe_add(box_sizing_adjustment);
+    let (min_size, max_size) = preferred_size.transfer_aspect_ratio_constraints(
+        style.min_size().maybe_resolve(grid_area_size),
+        style.max_size().maybe_resolve(grid_area_size),
+        aspect_ratio,
+    );
+    let min_size =
+        min_size.maybe_add(box_sizing_adjustment).or(padding_border_size.map(Some)).maybe_max(padding_border_size);
+    let max_size = max_size.maybe_add(box_sizing_adjustment);
 
     // Resolve default alignment styles if they are set on neither the parent or the node itself
     // Note: if the child has a preferred aspect ratio but neither width or height are set, then the width is stretched

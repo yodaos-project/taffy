@@ -169,7 +169,7 @@ jobs:
       - run: cargo +nightly clippy --workspace -- -D warnings
 
   # Run rustdoc with the `docsrs` cfg to ensure that the documentation is compatible with docs.rs.
-  # This enables the doc_auto_cfg feature, which requires the nightly toolchain.
+  # This enables the doc_cfg feature, which requires the nightly toolchain.
   # Also checks that the examples can be scraped.
   doc:
     name: Documentation

@@ -54,22 +54,16 @@ pub fn compute_grid_layout(tree: &mut impl LayoutGridContainer, node: NodeId, in
     let box_sizing_adjustment =
         if style.box_sizing() == BoxSizing::ContentBox { padding_border_size } else { Size::ZERO };
 
-    let min_size = style
-        .min_size()
-        .maybe_resolve(parent_size)
-        .maybe_apply_aspect_ratio(aspect_ratio)
-        .maybe_add(box_sizing_adjustment);
-    let max_size = style
-        .max_size()
-        .maybe_resolve(parent_size)
-        .maybe_apply_aspect_ratio(aspect_ratio)
-        .maybe_add(box_sizing_adjustment);
+    let preferred_size = style.size().maybe_resolve(parent_size);
+    let (min_size, max_size) = preferred_size.transfer_aspect_ratio_constraints(
+        style.min_size().maybe_resolve(parent_size),
+        style.max_size().maybe_resolve(parent_size),
+        aspect_ratio,
+    );
+    let min_size = min_size.maybe_add(box_sizing_adjustment);
+    let max_size = max_size.maybe_add(box_sizing_adjustment);
     let preferred_size = if inputs.sizing_mode == SizingMode::InherentSize {
-        style
-            .size()
-            .maybe_resolve(parent_size)
-            .maybe_apply_aspect_ratio(style.aspect_ratio())
-            .maybe_add(box_sizing_adjustment)
+        preferred_size.maybe_apply_aspect_ratio(style.aspect_ratio()).maybe_add(box_sizing_adjustment)
     } else {
         Size::NONE
     };
