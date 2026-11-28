@@ -84,8 +84,56 @@ impl CalcHandle {
     }
 }
 
-/// CompactLengthInner implementation for 64 bit platforms
-#[cfg(target_pointer_width = "64")]
+/// Integer-only storage when no calc handle can be constructed.
+#[cfg(not(feature = "calc"))]
+mod inner {
+    /// The numeric value occupies the high 32 bits and the tag the low byte.
+    #[derive(Copy, Clone, Debug, PartialEq)]
+    pub(super) struct CompactLengthInner(u64);
+
+    impl CompactLengthInner {
+        /// Construct a length from a tag and numeric value.
+        #[inline(always)]
+        pub(super) const fn from_val(val: f32, tag: usize) -> Self {
+            Self((val.to_bits() as u64) << 32 | tag as u64)
+        }
+
+        /// Construct a length from a tag without a numeric value.
+        #[inline(always)]
+        pub(super) const fn from_tag(tag: usize) -> Self {
+            Self(tag as u64)
+        }
+
+        /// Get the general tag (low 8 bits).
+        #[inline(always)]
+        pub(super) fn tag(self) -> usize {
+            (self.0 & 0xff) as usize
+        }
+
+        /// Get the numeric value.
+        #[inline(always)]
+        pub(super) fn value(self) -> f32 {
+            f32::from_bits((self.0 >> 32) as u32)
+        }
+
+        /// Serialize with the tag above the numeric value, as in the calc-enabled representation.
+        #[inline(always)]
+        #[cfg(feature = "serde")]
+        pub(super) fn serialized(self) -> u64 {
+            self.0.rotate_left(32)
+        }
+
+        /// Read the existing serialized tag and value representation.
+        #[inline(always)]
+        #[cfg(feature = "serde")]
+        pub(super) fn from_serialized(value: u64) -> Self {
+            Self(value.rotate_right(32))
+        }
+    }
+}
+
+/// CompactLengthInner implementation for 64 bit platforms with calc handles
+#[cfg(all(feature = "calc", target_pointer_width = "64"))]
 mod inner {
     use super::CalcHandle;
 
@@ -166,8 +214,8 @@ mod inner {
     }
 }
 
-/// CompactLengthInner implementation for 32 bit platforms
-#[cfg(target_pointer_width = "32")]
+/// CompactLengthInner implementation for 32 bit platforms with calc handles
+#[cfg(all(feature = "calc", target_pointer_width = "32"))]
 mod inner {
     use super::CalcHandle;
 
@@ -251,7 +299,7 @@ mod inner {
 
 use inner::CompactLengthInner;
 
-/// A representation of a length as a compact 64-bit tagged pointer
+/// A representation of a length in 64 bits, using a tagged pointer when calc is enabled.
 #[derive(Copy, Clone, PartialEq, Debug)]
 #[repr(transparent)]
 pub struct CompactLength(CompactLengthInner);
@@ -699,6 +747,14 @@ impl<'de> serde::Deserialize<'de> for CompactLength {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    #[cfg(not(feature = "calc"))]
+    fn lengths_are_send_and_sync_without_calc() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<super::CompactLength>();
+        assert_send_sync::<crate::Style>();
+    }
+
     use super::{CalcHandle, CompactLength, CompactLengthInner};
 
     impl CompactLength {
