@@ -106,7 +106,7 @@ fn create_yg_node(tree: &mut yg::YogaTree, style: &tf::Style, children: &[yg::De
     let mut node = yg::Node::new();
     apply_taffy_style(&mut node, &style);
     for (i, child) in children.into_iter().enumerate() {
-        node.insert_child(&mut tree[*child], i as u32);
+        node.insert_child(&mut tree[*child], i);
     }
     tree.insert(node)
 }
@@ -114,7 +114,7 @@ fn create_yg_node(tree: &mut yg::YogaTree, style: &tf::Style, children: &[yg::De
 pub fn new_default_style_with_children(tree: &mut yg::YogaTree, children: &[yg::DefaultKey]) -> yg::DefaultKey {
     let mut node = yg::Node::new();
     for (i, child) in children.into_iter().enumerate() {
-        node.insert_child(&mut tree[*child], i as u32);
+        node.insert_child(&mut tree[*child], i);
     }
     tree.insert(node)
 }
@@ -123,7 +123,7 @@ fn set_node_children(tree: &mut yg::YogaTree, node_id: yg::DefaultKey, children:
     // TODO: clear existing children.
     for (i, child_id) in children.into_iter().enumerate() {
         let [node, child] = tree.get_disjoint_mut([node_id, *child_id]).unwrap();
-        node.insert_child(child, i as u32);
+        node.insert_child(child, i);
     }
 }
 
@@ -236,8 +236,8 @@ fn apply_taffy_style(node: &mut yg::Node, style: &tf::Style) {
     node.set_justify_content(content_into_justify(style.justify_content));
 
     // gap
-    node.set_column_gap(into_pixels(style.gap.width));
-    node.set_row_gap(into_pixels(style.gap.height));
+    node.set_column_gap(yg::StyleUnit::Point(yg::OrderedFloat(into_pixels(style.gap.width))));
+    node.set_row_gap(yg::StyleUnit::Point(yg::OrderedFloat(into_pixels(style.gap.height))));
 
     // flex
     node.set_flex_direction(match style.flex_direction {
