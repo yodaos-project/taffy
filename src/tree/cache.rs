@@ -1,7 +1,7 @@
 //! A cache for storing the results of layout computation
 use crate::geometry::Size;
 use crate::style::AvailableSpace;
-use crate::tree::{LayoutOutput, RunMode};
+use crate::tree::{LayoutInput, LayoutOutput, RunMode};
 
 /// The number of cache entries for each node in the tree
 const CACHE_SIZE: usize = 9;
@@ -24,6 +24,8 @@ pub(crate) struct CacheEntry<T> {
 pub struct Cache {
     /// The cache entry for the node's final layout
     final_layout_entry: Option<CacheEntry<LayoutOutput>>,
+    /// The containing-block height used to resolve percentages in the final layout
+    final_layout_parent_height: Option<f32>,
     /// The cache entries for the node's preliminary size measurements
     measure_entries: [Option<CacheEntry<Size<f32>>>; CACHE_SIZE],
 }
@@ -37,7 +39,16 @@ impl Default for Cache {
 impl Cache {
     /// Create a new empty cache
     pub const fn new() -> Self {
-        Self { final_layout_entry: None, measure_entries: [None; CACHE_SIZE] }
+        Self { final_layout_entry: None, final_layout_parent_height: None, measure_entries: [None; CACHE_SIZE] }
+    }
+
+    /// Look up a layout, including its percentage height basis for final layout.
+    #[inline]
+    pub(crate) fn get_for_layout(&self, inputs: &LayoutInput) -> Option<LayoutOutput> {
+        if inputs.run_mode == RunMode::PerformLayout && self.final_layout_parent_height != inputs.parent_size.height {
+            return None;
+        }
+        self.get(inputs.known_dimensions, inputs.available_space, inputs.run_mode)
     }
 
     /// Return the cache slot to cache the current computed result in
@@ -158,9 +169,24 @@ impl Cache {
         run_mode: RunMode,
         layout_output: LayoutOutput,
     ) {
+        self.store_with_parent_height(known_dimensions, available_space, None, run_mode, layout_output);
+    }
+
+    /// Store a computed size and remember the height basis for final layout.
+    #[inline]
+    pub(crate) fn store_with_parent_height(
+        &mut self,
+        known_dimensions: Size<Option<f32>>,
+        available_space: Size<AvailableSpace>,
+        parent_height: Option<f32>,
+        run_mode: RunMode,
+        layout_output: LayoutOutput,
+    ) {
         match run_mode {
             RunMode::PerformLayout => {
-                self.final_layout_entry = Some(CacheEntry { known_dimensions, available_space, content: layout_output })
+                self.final_layout_entry =
+                    Some(CacheEntry { known_dimensions, available_space, content: layout_output });
+                self.final_layout_parent_height = parent_height;
             }
             RunMode::ComputeSize => {
                 let cache_slot = Self::compute_cache_slot(known_dimensions, available_space);
@@ -174,6 +200,7 @@ impl Cache {
     /// Clear all cache entries
     pub fn clear(&mut self) {
         self.final_layout_entry = None;
+        self.final_layout_parent_height = None;
         self.measure_entries = [None; CACHE_SIZE];
     }
 

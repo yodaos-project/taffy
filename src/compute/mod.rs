@@ -162,7 +162,7 @@ where
     let LayoutInput { known_dimensions, available_space, run_mode, .. } = inputs;
 
     // First we check if we have a cached result for the given input
-    let cache_entry = tree.get_cache_mut(node).get(known_dimensions, available_space, run_mode);
+    let cache_entry = tree.get_cache_mut(node).get_for_layout(&inputs);
     if let Some(cached_size_and_baselines) = cache_entry {
         debug_log_node!(known_dimensions, inputs.parent_size, available_space, run_mode, inputs.sizing_mode);
         debug_log!("RESULT (CACHED)", dbg:cached_size_and_baselines.size);
@@ -175,7 +175,13 @@ where
     let computed_size_and_baselines = compute_uncached(tree, node, inputs);
 
     // Cache result
-    tree.get_cache_mut(node).store(known_dimensions, available_space, run_mode, computed_size_and_baselines);
+    tree.get_cache_mut(node).store_with_parent_height(
+        known_dimensions,
+        available_space,
+        inputs.parent_size.height,
+        run_mode,
+        computed_size_and_baselines,
+    );
 
     debug_log!("RESULT", dbg:computed_size_and_baselines.size);
     debug_pop_node!();
